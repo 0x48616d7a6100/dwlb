@@ -15,10 +15,10 @@ A fast, feature-complete bar for [dwl](https://github.com/djpohly/dwl).
 
 ## Installation
 ```bash
-git clone https://github.com/kolunmi/dwlb
+git clone https://github.com/0xf0ad/dwlb
 cd dwlb
 make
-make install
+sudo make install
 ```
 
 ## Usage
