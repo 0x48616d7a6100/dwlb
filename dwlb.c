@@ -27,6 +27,9 @@
 #include "wlr-layer-shell-unstable-v1-protocol.h"
 #include "dwl-ipc-unstable-v2-protocol.h"
 
+#include "components.h"
+#include "util.h"
+
 #define DIE(fmt, ...)						\
 	do {							\
 		cleanup();					\
@@ -104,6 +107,7 @@
 	"	-target-socket [SOCKET-NAME]	set the socket to send command to. Sockets can be found in `$XDG_RUNTIME_DIR/dwlb/`\n"\
 	"	-status	[OUTPUT] [TEXT]		set status text\n"	\
 	"	-status-stdin	[OUTPUT]		set status text from stdin\n"	\
+	"   -configured-status          set status text to previously configured from config.def.h prior to code compilation" \
 	"	-title	[OUTPUT] [TEXT]		set title text, if -custom-title is enabled\n"	\
 	"	-show [OUTPUT]			show bar\n"		\
 	"	-hide [OUTPUT]			hide bar\n"		\
@@ -207,6 +211,8 @@ static struct fcft_font *font;
 static uint32_t height, textpadding, buffer_scale;
 
 static bool run_display;
+
+char buf[1024];
 
 #include "config.h"
 
@@ -402,7 +408,7 @@ draw_frame(Bar *bar)
 		const bool occupied = bar->ctags & 1 << i;
 		const bool urgent = bar->urg & 1 << i;
 		
-		if (hide_vacant && !active && !occupied && !urgent)
+		if (hide_vacant && !(active || occupied || urgent))
 			continue;
 
 		pixman_color_t *fg_color = urgent ? &urgent_fg_color : (active ? &active_fg_color : (occupied ? &occupied_fg_color : &inactive_fg_color));
@@ -442,7 +448,8 @@ draw_frame(Bar *bar)
 	uint32_t nx;
 	if (center_title) {
 		uint32_t title_width = TEXT_WIDTH(custom_title ? bar->title.text : bar->window_title, bar->width - status_width - x, 0);
-		nx = MAX(x, MIN((bar->width - title_width) / 2, bar->width - status_width - title_width));
+//		nx = MAX(x, MIN((bar->width - title_width) / 2, bar->width - status_width - title_width));
+		nx = MAX(x, MIN(((bar->width - title_width - x - status_width) >> 1) + x, bar->width - status_width - title_width));
 	} else {
 		nx = MIN(x + bar->textpadding, bar->width - status_width);
 	}
@@ -1706,6 +1713,28 @@ main(int argc, char **argv)
 			}
 			free(status);
 			return 0;
+
+		} else if (!strcmp(argv[i], "-configured-status")){
+			char str[TEXT_MAX];
+			str[TEXT_MAX-1] = '\0';
+			const char* result;
+			int ret;
+			while(true){
+				size_t len = 0;
+				for(size_t i = 0; i != sizeof(args) / sizeof(struct arg); i++){
+					if(!(result = args[i].func(args[i].args)))
+						result = UNDEFINEDSTR;
+					if((ret = snprintf(str + len, TEXT_MAX - len, args[i].fmt, result)) < 0)
+						break;
+					len += ret;
+				}
+				str[len] = '\0';
+				client_send_command(&sock_address, "all", "status", str, target_socket);
+				len = 0;
+				sleep(interval);
+			}
+			return EXIT_SUCCESS;
+
 		} else if (!strcmp(argv[i], "-title")) {
 			if (++i + 1 >= argc)
 				DIE("Option -title requires two arguments");
